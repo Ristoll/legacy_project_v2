@@ -11,13 +11,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Nova Poshta API
-NP_API_KEY = os.getenv("NP_API_KEY")
-NP_API_URL = os.getenv("NP_API_URL")
+NP_API_KEY = os.getenv("NP_API_KEY","")
+NP_API_URL = os.getenv("NP_API_URL","")
 
 # UkrPoshta
-UP_LOGIN = os.getenv("UP_LOGIN")
-UP_PASSWORD = os.getenv("UP_PASSWORD")
-UP_API_URL = os.getenv("UP_API_URL")
+UP_LOGIN = os.getenv("UP_LOGIN","")
+UP_PASSWORD = os.getenv("UP_PASSWORD","")
+UP_API_URL = os.getenv("UP_API_URL","")
 
 # internal courier
 COURIER_TOKEN = os.getenv("COURIER_TOKEN")
