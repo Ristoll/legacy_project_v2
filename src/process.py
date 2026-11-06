@@ -51,6 +51,10 @@ def proc(params=None):
                 elif o['amount'] > 500:
                     discount = calc(o['amount'], 0.03)
                 net = o['amount'] - discount - tax
+                
+                if not validate_net(net, o.get('id', 'unknown'), errors):
+                    continue
+
                 total_revenue += net
                 total_tax += tax
                 result.append({
@@ -63,26 +67,12 @@ def proc(params=None):
                     "status": "processed",
                     "date": format_date(o['date'])
                 })
-            elif u['role'] == 2:
-                # regular user
-                tax = calc(o['amount'], 0.2)
-                net = o['amount'] - tax
-                total_revenue += net
-                total_tax += tax
-                result.append({
-                    "order_id": o['id'],
-                    "user": u['name'],
-                    "amount": o['amount'],
-                    "discount": 0,
-                    "tax": tax,
-                    "net": net,
-                    "status": "processed",
-                    "date": format_date(o['date'])
-                })
             else:
                 # other roles - no discount, standard tax
                 tax = calc(o['amount'], 0.2)
                 net = o['amount'] - tax
+                if not validate_net(net, o.get('id', 'unknown'), errors):
+                    continue
                 total_revenue += net
                 total_tax += tax
                 result.append({
@@ -166,12 +156,27 @@ def calculate_tax(amount, role):
 
 def get_discount(amount, role):
     # same logic as in proc() - also duplicated
-    if role != 3:
-        return 0
-    if amount > 1000:
-        return calc(amount, 0.05)
-    elif amount > 500:
-        return calc(amount, 0.03)
-    return 0
+    if amount < 0:
+        amount = 0 # prevent negative discount calculations
+
+    discount = 0
+
+    if role == 3:
+        if amount > 1000:
+            discount = calc(amount, 0.05)
+        elif amount > 500:
+            discount = calc(amount, 0.03)
+
+    return max(0, discount)  # ensure non-negative
 
 # CR-156 validation
+
+def validate_net(net, order_id, errors):
+    if net < 0:
+        errors.append({
+            "order_id": order_id,
+            "error": f"Negative net amount: {net}"
+        })
+        return False
+
+    return True
