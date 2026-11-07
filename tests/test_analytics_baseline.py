@@ -343,8 +343,9 @@ def test_generate_dashboard_no_orders(monkeypatch):
     def mock_get_data(name):
         return [] if name == "orders" else []
 
-    monkeypatch.setattr("src.db.get_data", mock_get_data)
-
+    monkeypatch.setattr(
+        "src.analytics_dashboard.get_data", mock_get_data
+    )
     result = analytics.generate_dashboard()
 
     assert result == {
@@ -402,9 +403,12 @@ def test_generate_dashboard_daily(monkeypatch):
     def mock_proc():
         return {}
 
-    monkeypatch.setattr("src.db.get_data", mock_get_data)
-    monkeypatch.setattr("src.process.proc", mock_proc)
-
+    monkeypatch.setattr(
+        "src.analytics_dashboard.get_data", mock_get_data
+    )
+    monkeypatch.setattr(
+        "src.analytics_dashboard.proc", mock_proc
+    )
     result = analytics.generate_dashboard()
 
     assert result["period"] == "daily"
@@ -438,9 +442,14 @@ def test_generate_dashboard_weekly(monkeypatch):
             return orders
         return []
 
-    monkeypatch.setattr("src.db.get_data", mock_get_data)
-    monkeypatch.setattr("src.process.proc", lambda: {})
-
+    monkeypatch.setattr(
+        "src.analytics_dashboard.get_data",
+        mock_get_data
+    )
+    monkeypatch.setattr(
+        "src.analytics_dashboard.proc",
+        lambda: {}
+    )
     result = analytics.generate_dashboard(period="weekly")
 
     assert result["period"] == "weekly"
@@ -461,9 +470,12 @@ def test_generate_dashboard_calls_proc(monkeypatch):
         calls["count"] += 1
         return {}
 
-    monkeypatch.setattr("src.db.get_data", mock_get_data)
-    monkeypatch.setattr("src.process.proc", mock_proc)
-
+    monkeypatch.setattr(
+        "src.analytics_dashboard.get_data", mock_get_data
+    )
+    monkeypatch.setattr(
+        "src.analytics_dashboard.proc", mock_proc
+    )
     analytics.generate_dashboard()
 
     assert calls["count"] == 1

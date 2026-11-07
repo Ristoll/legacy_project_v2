@@ -1,3 +1,4 @@
+"""Analytics models, enums, constants and shared state."""
 from enum import IntEnum
 from typing import Any, Dict
 
@@ -34,9 +35,11 @@ class AnalyticsStats:
         }
 
     def record_call(self) -> None:
+        """Record an analytics function call."""
         self.stats["calls"] += 1
 
     def record_error(self) -> None:
+        """Record an analytics error."""
         self.stats["errors"] += 1
 
     def reset(self) -> None:

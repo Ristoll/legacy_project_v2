@@ -1,5 +1,6 @@
+"""Metric calculation and statistics management functions."""
 from typing import Any, Dict
-from src.analytics_models import _ANALYTICS_STATE, ErrorCode, MetricType, _ANALYTICS_STATE, DEFAULT_TAX_RATE
+from src.analytics_models import _ANALYTICS_STATE, ErrorCode, MetricType
 
 def _calc_daily_metrics(
     data: list[Dict[str, Any]],
@@ -54,7 +55,11 @@ def _group_by_period(
 
     return result
 
-def calc_metrics(data: list[Dict[str, Any]], type: MetricType, filter: str = None, mode: str = None) -> tuple[ErrorCode, Dict[str, Any] | None]:
+def calc_metrics(data: list[Dict[str, Any]],
+                metric_type: MetricType,
+                category: str = None,
+                mode: str = None
+) -> tuple[ErrorCode, Dict[str, Any] | None]:
     """Calculate metrics for the specified period and mode."""
     _ANALYTICS_STATE.record_call()
 
@@ -62,8 +67,8 @@ def calc_metrics(data: list[Dict[str, Any]], type: MetricType, filter: str = Non
         _ANALYTICS_STATE.record_error()
         return ErrorCode.NO_DATA, None
 
-    if type == MetricType.DAILY:
-        result = _calc_daily_metrics(data, filter)
+    if metric_type == MetricType.DAILY:
+        result = _calc_daily_metrics(data, category)
 
         if result is None:
             return ErrorCode.NO_DATA, None
@@ -75,7 +80,7 @@ def calc_metrics(data: list[Dict[str, Any]], type: MetricType, filter: str = Non
             MetricType.YEARLY: ("year", "years", None),
         }
 
-        config = period_config.get(type)
+        config = period_config.get(metric_type)
 
         if config:
             field, result_key, total_key = config
@@ -84,7 +89,7 @@ def calc_metrics(data: list[Dict[str, Any]], type: MetricType, filter: str = Non
             result = {}
 
     if mode == "cache":
-        cache_key = str(type) + "_" + str(filter)
+        cache_key = str(metric_type) + "_" + str(category)
         _ANALYTICS_STATE.cache[cache_key] = result
 
     return ErrorCode.OK, result

@@ -1,4 +1,4 @@
-
+"""Growth and sales conversion metrics calculations."""
 from src.analytics_models import INITIAL_GROWTH_BASELINE, PERCENTAGE_MULTIPLIER
 
 def calculate_growth(current: float, previous: float) -> float:

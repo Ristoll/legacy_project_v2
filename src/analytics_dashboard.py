@@ -1,9 +1,12 @@
+"""Dashboard generation and order and user analytics."""
+
 from typing import Dict, Any
 
 from src.analytics_metrics import calc_metrics
 from src.analytics_models import _ANALYTICS_STATE, DEFAULT_TAX_RATE, ErrorCode, MetricType, UserRole
 from src.analytics_products import get_top_products
-
+from src.db import get_data
+from src.process import proc
 
 def _summarize_orders(orders: list[Dict[str, Any]]) -> Dict[str, Any]:
     """Calculate total revenue, taxes, paid orders, and refunds."""
@@ -54,8 +57,6 @@ def _segment_users(users: list[Dict[str, Any]]) -> Dict[str, Any]:
 
 def generate_dashboard(period="daily", category=None):
     """Generate a dashboard with aggregated order and user statistics."""
-    from src.db import get_data
-    from src.process import proc
 
     proc()
 
