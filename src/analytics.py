@@ -62,84 +62,136 @@ PERCENTAGE_MULTIPLIER = 100.0
 INITIAL_GROWTH_BASELINE = 100.0
 DEFAULT_TAX_RATE = 0.2
 
+def _calc_daily_metrics(data, category=None):
+    """Calculate metrics for daily data."""
+    total = 0
+    count = 0
+
+    for item in data:
+        if category and item.get("cat") != category:
+            continue
+
+        total += item.get("amount", 0)
+        count += 1
+
+    if count == 0:
+        return None
+
+    return {
+        "avg": total / count,
+        "total": total,
+        "count": count,
+    }
+
+
+def _group_by_period(data, field, result_key, total_key=None):
+    """Group metrics by a specified time period."""
+    groups = {}
+
+    for item in data:
+        period = item.get(field, 0)
+
+        if period not in groups:
+            groups[period] = {"total": 0, "count": 0}
+
+        groups[period]["total"] += item.get("amount", 0)
+        groups[period]["count"] += 1
+
+    for group in groups.values():
+        group["avg"] = group["total"] / group["count"]
+
+    result = {result_key: groups}
+
+    if total_key:
+        result[total_key] = len(groups)
+
+    return result
+
+
+def _summarize_orders(orders):
+    """Calculate revenue, order count, tax and refunds."""
+    total_revenue = 0
+    total_orders = 0
+    total_tax = 0
+    refunded = 0
+
+    for order in orders:
+        if order.get("status") == "paid":
+            amount = order.get("amount", 0)
+            total_revenue += amount
+            total_orders += 1
+            total_tax += amount * DEFAULT_TAX_RATE
+
+        elif order.get("status") == "refunded":
+            refunded += order.get("amount", 0)
+
+    return {
+        "total_revenue": total_revenue,
+        "total_orders": total_orders,
+        "total_tax": total_tax,
+        "refunded": refunded,
+    }
+
+
+def _segment_users(users):
+    """Count users by role."""
+    premium = 0
+    regular = 0
+    other = 0
+
+    for user in users:
+        role = user.get("role")
+
+        if role == UserRole.PREMIUM:
+            premium += 1
+        elif role == UserRole.REGULAR:
+            regular += 1
+        else:
+            other += 1
+
+    return {
+        "premium": premium,
+        "regular": regular,
+        "other": other,
+        "total": len(users),
+    }
+
 def calc_metrics(d, t, f=None, m=None):
     """
     Calculate sales metrics.
     d=data, t=type, f=filter, m=mode
     """
     _ANALYTICS_STATE.record_call()
-    
+
     if not d:
         _ANALYTICS_STATE.record_error()
         return ErrorCode.NO_DATA, None
-    
-    r = {}
-    
+
     if t == MetricType.DAILY:
-        s = 0
-        n = 0
-        for i in range(len(d)):
-            x = d[i]
-            if f:
-                if x.get("cat") != f:
-                    continue
-            s = s + x.get("amount", 0)
-            n = n + 1
-        if n > 0:
-            r["avg"] = s / n
-            r["total"] = s
-            r["count"] = n
-        else:
+        r = _calc_daily_metrics(d, f)
+
+        if r is None:
             return ErrorCode.NO_DATA, None
-            
-    elif t == MetricType.WEEKLY:
-        weeks = {}
-        for i in range(len(d)):
-            x = d[i]
-            w = x.get("week", 0)
-            if w not in weeks:
-                weeks[w] = {"total": 0, "count": 0}
-            weeks[w]["total"] = weeks[w]["total"] + x.get("amount", 0)
-            weeks[w]["count"] = weeks[w]["count"] + 1
-        
-        for w in weeks:
-            weeks[w]["avg"] = weeks[w]["total"] / weeks[w]["count"]
-        r["weeks"] = weeks
-        r["total_weeks"] = len(weeks)
-        
-    elif t == MetricType.MONTHLY:
-        months = {}
-        for i in range(len(d)):
-            x = d[i]
-            mth = x.get("month", 0)
-            if mth not in months:
-                months[mth] = {"total": 0, "count": 0}
-            months[mth]["total"] = months[mth]["total"] + x.get("amount", 0)
-            months[mth]["count"] = months[mth]["count"] + 1
-        
-        for mth in months:
-            months[mth]["avg"] = months[mth]["total"] / months[mth]["count"]
-        r["months"] = months
-        r["total_months"] = len(months)
-    
-    elif t == MetricType.YEARLY:
-        years = {}
-        for i in range(len(d)):
-            x = d[i]
-            yr = x.get("year", 0)
-            if yr not in years:
-                years[yr] = {"total": 0, "count": 0}
-            years[yr]["total"] = years[yr]["total"] + x.get("amount", 0)
-            years[yr]["count"] = years[yr]["count"] + 1
-        
-        for yr in years:
-            years[yr]["avg"] = years[yr]["total"] / years[yr]["count"]
-        r["years"] = years
-    
+
+    else:
+        period_config = {
+            MetricType.WEEKLY: ("week", "weeks", "total_weeks"),
+            MetricType.MONTHLY: ("month", "months", "total_months"),
+            MetricType.YEARLY: ("year", "years", None),
+        }
+
+        config = period_config.get(t)
+
+        if config:
+            field, result_key, total_key = config
+            r = _group_by_period(d, field, result_key, total_key)
+        else:
+            r = {}
+
     if m == "cache":
         cache_key = str(t) + "_" + str(f)
         _ANALYTICS_STATE.cache[cache_key] = r
-    
+
     return ErrorCode.OK, r
 
 def get_top_products(data, n=10, sort_by="revenue"):
@@ -233,59 +285,43 @@ def generate_dashboard(period="daily", category=None):
     """
     Main dashboard function.
     Fetches data from multiple sources and calculates everything.
-    This function does WAY too much.
     """
-    # import here to avoid circular imports - architectural problem
     from src.db import get_data
     from src.process import proc
-    
-    # get all data
+
     orders = get_data("orders")
-    users = get_data("users") 
+    users = get_data("users")
     products = get_data("products")
-    
+
     if not orders:
         return {"error": "no data", "code": ErrorCode.NO_DATA}
-    
-    # process everything
+
     proc_result = proc()
-    
-    # calculate metrics manually (duplicating proc() logic)
-    total_revenue = 0
-    total_orders = 0
-    total_tax = 0
-    refunded = 0
-    
-    for o in orders:
-        if o.get("status") == "paid":
-            total_revenue += o.get("amount", 0)
-            total_orders += 1
-            # hardcoded tax rate again
-            total_tax += o.get("amount", 0) * DEFAULT_TAX_RATE
-        elif o.get("status") == "refunded":
-            refunded += o.get("amount", 0)
-    
-    premium_users = len([u for u in users if u.get("role") == UserRole.PREMIUM])
-    regular_users = len([u for u in users if u.get("role") == UserRole.REGULAR])
-    other_users = len([u for u in users if u.get("role") not in [UserRole.REGULAR, UserRole.PREMIUM]])
-    
+
+    order_summary = _summarize_orders(orders)
+    user_segments = _segment_users(users)
+
     top_prods = get_top_products(orders)
-    
-    code, metrics = calc_metrics(orders, MetricType.DAILY if period == "daily" else MetricType.WEEKLY, category)
-    
+
+    code, metrics = calc_metrics(
+        orders,
+        MetricType.DAILY if period == "daily" else MetricType.WEEKLY,
+        category
+    )
+
     return {
         "period": period,
-        "total_revenue": round(total_revenue, 2),
-        "total_orders": total_orders,
-        "total_tax": round(total_tax, 2),
-        "refunded": round(refunded, 2),
-        "net_revenue": round(total_revenue - total_tax - refunded, 2),
-        "users": {
-            "premium": premium_users,
-            "regular": regular_users,
-            "other": other_users,
-            "total": len(users)
-        },
+        "total_revenue": round(order_summary["total_revenue"], 2),
+        "total_orders": order_summary["total_orders"],
+        "total_tax": round(order_summary["total_tax"], 2),
+        "refunded": round(order_summary["refunded"], 2),
+        "net_revenue": round(
+            order_summary["total_revenue"]
+            - order_summary["total_tax"]
+            - order_summary["refunded"],
+            2
+        ),
+        "users": user_segments,
         "top_products": top_prods,
         "metrics": metrics,
         "global_stats": _ANALYTICS_STATE.stats.copy()
