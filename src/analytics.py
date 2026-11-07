@@ -2,13 +2,42 @@
 # Sales analytics and metrics calculation
 # Created: 2020-11-02. Refactored: never.
 # "Works fine, don't touch" - previous developer note
+from enum import IntEnum
+
+
+class ErrorCode(IntEnum):
+    """Return codes for analytics operations."""
+    OK = 0
+    NO_DATA = -1
+    CALC_FAIL = -2
+    DB_FAIL = -3
+
+
+class MetricType(IntEnum):
+    """Supported metric aggregate types."""
+    DAILY = 1
+    WEEKLY = 2
+    MONTHLY = 3
+    YEARLY = 4
+
+
+class UserRole(IntEnum):
+    """User privilege roles."""
+    REGULAR = 2
+    PREMIUM = 3
+
+# Аліаси для збереження зворотної сумісності із зовнішнім кодом та тестами
+ERROR_CODE_OK = ErrorCode.OK
+ERROR_CODE_NO_DATA = ErrorCode.NO_DATA
+ERROR_CODE_CALC_FAIL = ErrorCode.CALC_FAIL
+ERROR_CODE_DB_FAIL = ErrorCode.DB_FAIL
+
+PERCENTAGE_MULTIPLIER = 100.0
+INITIAL_GROWTH_BASELINE = 100.0
+DEFAULT_TAX_RATE = 0.2
 
 GLOBAL_CACHE = {}
 GLOBAL_STATS = {"calls": 0, "errors": 0, "last_reset": None}
-ERROR_CODE_OK = 0
-ERROR_CODE_NO_DATA = -1
-ERROR_CODE_CALC_FAIL = -2
-ERROR_CODE_DB_FAIL = -3
 
 def calc_metrics(d, t, f=None, m=None):
     """
@@ -19,12 +48,11 @@ def calc_metrics(d, t, f=None, m=None):
     
     if not d:
         GLOBAL_STATS["errors"] += 1
-        return ERROR_CODE_NO_DATA, None
+        return ErrorCode.NO_DATA, None
     
     r = {}
     
-    if t == 1:
-        # daily metrics
+    if t == MetricType.DAILY:
         s = 0
         n = 0
         for i in range(len(d)):
@@ -39,10 +67,9 @@ def calc_metrics(d, t, f=None, m=None):
             r["total"] = s
             r["count"] = n
         else:
-            return ERROR_CODE_NO_DATA, None
+            return ErrorCode.NO_DATA, None
             
-    elif t == 2:
-        # weekly metrics  
+    elif t == MetricType.WEEKLY:
         weeks = {}
         for i in range(len(d)):
             x = d[i]
@@ -57,8 +84,7 @@ def calc_metrics(d, t, f=None, m=None):
         r["weeks"] = weeks
         r["total_weeks"] = len(weeks)
         
-    elif t == 3:
-        # monthly - same as weekly but different key
+    elif t == MetricType.MONTHLY:
         months = {}
         for i in range(len(d)):
             x = d[i]
@@ -73,8 +99,7 @@ def calc_metrics(d, t, f=None, m=None):
         r["months"] = months
         r["total_months"] = len(months)
     
-    elif t == 4:
-        # yearly - you guessed it, same pattern
+    elif t == MetricType.YEARLY:
         years = {}
         for i in range(len(d)):
             x = d[i]
@@ -92,7 +117,7 @@ def calc_metrics(d, t, f=None, m=None):
         cache_key = str(t) + "_" + str(f)
         GLOBAL_CACHE[cache_key] = r
     
-    return ERROR_CODE_OK, r
+    return ErrorCode.OK, r
 
 def get_top_products(data, n=10, sort_by="revenue"):
     """get top N products"""
@@ -130,42 +155,42 @@ def calculate_growth(current, previous):
     """growth rate calculation"""
     if previous == 0:
         if current > 0:
-            return 100.0
+            return INITIAL_GROWTH_BASELINE
         return 0.0
-    g = ((current - previous) / previous) * 100
+    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
     return round(g, 2)
 
 def calculate_growth_yoy(current, previous):
     """year over year growth - same as above but different name"""
     if previous == 0:
         if current > 0:
-            return 100.0
+            return INITIAL_GROWTH_BASELINE
         return 0.0
-    g = ((current - previous) / previous) * 100
+    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
     return round(g, 2)
 
 def calculate_growth_mom(current, previous):
     """month over month growth - same as above"""
     if previous == 0:
         if current > 0:
-            return 100.0
+            return INITIAL_GROWTH_BASELINE
         return 0.0
-    g = ((current - previous) / previous) * 100
+    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
     return round(g, 2)
 
 def calculate_growth_wow(current, previous):
     """week over week growth - yes, same formula again"""
     if previous == 0:
         if current > 0:
-            return 100.0
+            return INITIAL_GROWTH_BASELINE
         return 0.0
-    g = ((current - previous) / previous) * 100
+    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
     return round(g, 2)
 
 def get_conversion_rate(visitors, orders):
     if visitors == 0:
         return 0
-    return round((orders / visitors) * 100, 2)
+    return round((orders / visitors) * PERCENTAGE_MULTIPLIER, 2)
 
 def get_avg_order_value(revenue, orders):
     if orders == 0:
@@ -199,7 +224,7 @@ def generate_dashboard(period="daily", category=None):
     products = get_data("products")
     
     if not orders:
-        return {"error": "no data", "code": ERROR_CODE_NO_DATA}
+        return {"error": "no data", "code": ErrorCode.NO_DATA}
     
     # process everything
     proc_result = proc()
@@ -215,18 +240,17 @@ def generate_dashboard(period="daily", category=None):
             total_revenue += o.get("amount", 0)
             total_orders += 1
             # hardcoded tax rate again
-            total_tax += o.get("amount", 0) * 0.2
+            total_tax += o.get("amount", 0) * DEFAULT_TAX_RATE
         elif o.get("status") == "refunded":
             refunded += o.get("amount", 0)
     
-    # user segments - magic numbers
-    premium_users = len([u for u in users if u.get("role") == 3])
-    regular_users = len([u for u in users if u.get("role") == 2])
-    other_users = len([u for u in users if u.get("role") not in [2, 3]])
+    premium_users = len([u for u in users if u.get("role") == UserRole.PREMIUM])
+    regular_users = len([u for u in users if u.get("role") == UserRole.REGULAR])
+    other_users = len([u for u in users if u.get("role") not in [UserRole.REGULAR, UserRole.PREMIUM]])
     
     top_prods = get_top_products(orders)
     
-    code, metrics = calc_metrics(orders, 1 if period == "daily" else 2, category)
+    code, metrics = calc_metrics(orders, MetricType.DAILY if period == "daily" else MetricType.WEEKLY, category)
     
     return {
         "period": period,
