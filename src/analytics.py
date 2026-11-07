@@ -212,17 +212,9 @@ def get_top_products(data, n=10, sort_by="revenue"):
         products[pid]["units"] = products[pid]["units"] + item.get("qty", 0)
         products[pid]["orders"] = products[pid]["orders"] + 1
     
-    lst = []
-    for pid in products:
-        lst.append(products[pid])
-    
-    # bubble sort instead of sorted()
-    for i in range(len(lst)):
-        for j in range(len(lst) - 1):
-            if lst[j][sort_by] < lst[j+1][sort_by]:
-                tmp = lst[j]
-                lst[j] = lst[j+1]
-                lst[j+1] = tmp
+    lst = list(products.values())
+
+    lst.sort(key=lambda product: product[sort_by], reverse=True)
     
     return lst[:n]
 
@@ -237,30 +229,15 @@ def calculate_growth(current, previous):
 
 def calculate_growth_yoy(current, previous):
     """year over year growth - same as above but different name"""
-    if previous == 0:
-        if current > 0:
-            return INITIAL_GROWTH_BASELINE
-        return 0.0
-    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
-    return round(g, 2)
+    return calculate_growth(current, previous)
 
 def calculate_growth_mom(current, previous):
     """month over month growth - same as above"""
-    if previous == 0:
-        if current > 0:
-            return INITIAL_GROWTH_BASELINE
-        return 0.0
-    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
-    return round(g, 2)
+    return calculate_growth(current, previous)
 
 def calculate_growth_wow(current, previous):
     """week over week growth - yes, same formula again"""
-    if previous == 0:
-        if current > 0:
-            return INITIAL_GROWTH_BASELINE
-        return 0.0
-    g = ((current - previous) / previous) * PERCENTAGE_MULTIPLIER
-    return round(g, 2)
+    return calculate_growth(current, previous)
 
 def get_conversion_rate(visitors, orders):
     if visitors == 0:
