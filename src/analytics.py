@@ -3,6 +3,7 @@
 # Created: 2020-11-02. Refactored: never.
 # "Works fine, don't touch" - previous developer note
 from enum import IntEnum
+from typing import Any, Dict
 
 
 class ErrorCode(IntEnum):
@@ -26,7 +27,32 @@ class UserRole(IntEnum):
     REGULAR = 2
     PREMIUM = 3
 
+class AnalyticsStats:
+    """Encapsulates execution statistics and cache."""
+
+    def __init__(self) -> None:
+        self.cache: Dict[str, Any] = {}
+        self.stats: Dict[str, Any] = {
+            "calls": 0,
+            "errors": 0,
+            "last_reset": None,
+        }
+
+    def record_call(self) -> None:
+        self.stats["calls"] += 1
+
+    def record_error(self) -> None:
+        self.stats["errors"] += 1
+
+    def reset(self) -> None:
+        self.stats.update({ "calls": 0, "errors": 0, "last_reset": None, })
+        self.cache.clear()
+
 # Аліаси для збереження зворотної сумісності із зовнішнім кодом та тестами
+_ANALYTICS_STATE = AnalyticsStats()
+GLOBAL_CACHE = _ANALYTICS_STATE.cache
+GLOBAL_STATS = _ANALYTICS_STATE.stats
+
 ERROR_CODE_OK = ErrorCode.OK
 ERROR_CODE_NO_DATA = ErrorCode.NO_DATA
 ERROR_CODE_CALC_FAIL = ErrorCode.CALC_FAIL
@@ -36,18 +62,15 @@ PERCENTAGE_MULTIPLIER = 100.0
 INITIAL_GROWTH_BASELINE = 100.0
 DEFAULT_TAX_RATE = 0.2
 
-GLOBAL_CACHE = {}
-GLOBAL_STATS = {"calls": 0, "errors": 0, "last_reset": None}
-
 def calc_metrics(d, t, f=None, m=None):
     """
     Calculate sales metrics.
     d=data, t=type, f=filter, m=mode
     """
-    GLOBAL_STATS["calls"] += 1
+    _ANALYTICS_STATE.record_call()
     
     if not d:
-        GLOBAL_STATS["errors"] += 1
+        _ANALYTICS_STATE.record_error()
         return ErrorCode.NO_DATA, None
     
     r = {}
@@ -115,7 +138,7 @@ def calc_metrics(d, t, f=None, m=None):
     
     if m == "cache":
         cache_key = str(t) + "_" + str(f)
-        GLOBAL_CACHE[cache_key] = r
+        _ANALYTICS_STATE.cache[cache_key] = r
     
     return ErrorCode.OK, r
 
@@ -204,9 +227,7 @@ def get_revenue_per_visitor(revenue, visitors):
 
 def reset_stats():
     """reset global statistics - should be called daily"""
-    global GLOBAL_STATS, GLOBAL_CACHE
-    GLOBAL_STATS = {"calls": 0, "errors": 0, "last_reset": None}
-    GLOBAL_CACHE = {}
+    _ANALYTICS_STATE.reset()
 
 def generate_dashboard(period="daily", category=None):
     """
@@ -267,5 +288,5 @@ def generate_dashboard(period="daily", category=None):
         },
         "top_products": top_prods,
         "metrics": metrics,
-        "global_stats": GLOBAL_STATS
+        "global_stats": _ANALYTICS_STATE.stats.copy()
     }
