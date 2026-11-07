@@ -13,13 +13,12 @@ def reset_module_state():
 
 def test_calc_metrics_empty_data():
     """Empty data returns NO_DATA error."""
-    code, result = analytics.calc_metrics([], 1)
+    code, result = analytics.calc_metrics([], analytics.MetricType.DAILY)
 
-    assert code == analytics.ERROR_CODE_NO_DATA
+    assert code == analytics.ErrorCode.NO_DATA
     assert result is None
-    assert analytics.GLOBAL_STATS["calls"] == 1
-    assert analytics.GLOBAL_STATS["errors"] == 1
-
+    assert analytics._ANALYTICS_STATE.stats["calls"] == 1
+    assert analytics._ANALYTICS_STATE.stats["errors"] == 1
 
 def test_calc_metrics_daily():
     """Daily metrics calculate total, average and count."""
@@ -29,9 +28,9 @@ def test_calc_metrics_daily():
         {"amount": 300}
     ]
 
-    code, result = analytics.calc_metrics(data, 1)
+    code, result = analytics.calc_metrics(data, analytics.MetricType.DAILY)
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result == {
         "avg": 200,
         "total": 600,
@@ -49,7 +48,7 @@ def test_calc_metrics_daily_with_category_filter():
 
     code, result = analytics.calc_metrics(data, 1, "food")
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result == {
         "avg": 200,
         "total": 400,
@@ -65,7 +64,7 @@ def test_calc_metrics_daily_no_matching_category():
 
     code, result = analytics.calc_metrics(data, 1, "electronics")
 
-    assert code == analytics.ERROR_CODE_NO_DATA
+    assert code == analytics.ErrorCode.NO_DATA
     assert result is None
 
 
@@ -77,9 +76,9 @@ def test_calc_metrics_weekly():
         {"amount": 300, "week": 2}
     ]
 
-    code, result = analytics.calc_metrics(data, 2)
+    code, result = analytics.calc_metrics(data, analytics.MetricType.WEEKLY)
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result["total_weeks"] == 2
     assert result["weeks"][1] == {
         "total": 300,
@@ -101,9 +100,9 @@ def test_calc_metrics_monthly():
         {"amount": 200, "month": 2}
     ]
 
-    code, result = analytics.calc_metrics(data, 3)
+    code, result = analytics.calc_metrics(data, analytics.MetricType.MONTHLY)
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result["total_months"] == 2
     assert result["months"][1]["total"] == 400
     assert result["months"][1]["avg"] == 200
@@ -117,9 +116,9 @@ def test_calc_metrics_yearly():
         {"amount": 200, "year": 2026}
     ]
 
-    code, result = analytics.calc_metrics(data, 4)
+    code, result = analytics.calc_metrics(data, analytics.MetricType.YEARLY)
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result["years"][2025] == {
         "total": 400,
         "count": 2,
@@ -133,11 +132,11 @@ def test_calc_metrics_cache_mode():
     data = [{"amount": 100}]
 
     code, result = analytics.calc_metrics(
-        data, 1, m="cache"
+        data, 1, mode="cache"
     )
 
-    assert code == analytics.ERROR_CODE_OK
-    assert analytics.GLOBAL_CACHE["1_None"] == result
+    assert code == analytics.ErrorCode.OK
+    assert analytics._ANALYTICS_STATE.cache["1_None"] == result
 
 
 def test_calc_metrics_unknown_type():
@@ -146,7 +145,7 @@ def test_calc_metrics_unknown_type():
 
     code, result = analytics.calc_metrics(data, 99)
 
-    assert code == analytics.ERROR_CODE_OK
+    assert code == analytics.ErrorCode.OK
     assert result == {}
 
 
@@ -312,18 +311,18 @@ def test_get_revenue_per_visitor_zero_visitors():
 
 def test_reset_stats_clears_statistics_and_cache():
     """Reset clears counters and cached values."""
-    analytics.GLOBAL_STATS["calls"] = 5
-    analytics.GLOBAL_STATS["errors"] = 2
-    analytics.GLOBAL_CACHE["test"] = {"total": 100}
+    analytics._ANALYTICS_STATE.stats["calls"] = 5
+    analytics._ANALYTICS_STATE.stats["errors"] = 2
+    analytics._ANALYTICS_STATE.cache["test"] = {"total": 100}
 
     analytics.reset_stats()
 
-    assert analytics.GLOBAL_STATS == {
+    assert analytics._ANALYTICS_STATE.stats == {
         "calls": 0,
         "errors": 0,
         "last_reset": None
     }
-    assert analytics.GLOBAL_CACHE == {}
+    assert analytics._ANALYTICS_STATE.cache == {}
 
 
 def test_calc_metrics_increments_call_counter():
@@ -333,7 +332,7 @@ def test_calc_metrics_increments_call_counter():
     analytics.calc_metrics(data, 1)
     analytics.calc_metrics(data, 1)
 
-    assert analytics.GLOBAL_STATS["calls"] == 2
+    assert analytics._ANALYTICS_STATE.stats["calls"] == 2
 
 
 # 6. generate_dashboard
@@ -350,7 +349,7 @@ def test_generate_dashboard_no_orders(monkeypatch):
 
     assert result == {
         "error": "no data",
-        "code": analytics.ERROR_CODE_NO_DATA
+        "code": analytics.ErrorCode.NO_DATA
     }
 
 
@@ -468,3 +467,80 @@ def test_generate_dashboard_calls_proc(monkeypatch):
     analytics.generate_dashboard()
 
     assert calls["count"] == 1
+
+# 7. Helper functions
+
+def test_calc_daily_metrics_with_category():
+    """Daily metrics calculate values for the selected category."""
+    data = [
+        {"amount": 100, "cat": "food"},
+        {"amount": 200, "cat": "electronics"},
+        {"amount": 300, "cat": "food"}
+    ]
+
+    result = analytics._calc_daily_metrics(data, "food")
+
+    assert result == {
+        "avg": 200,
+        "total": 400,
+        "count": 2
+    }
+
+
+def test_group_by_period():
+    """Records are grouped and summarized by the selected period."""
+    data = [
+        {"amount": 100, "week": 1},
+        {"amount": 200, "week": 1},
+        {"amount": 300, "week": 2}
+    ]
+
+    result = analytics._group_by_period(
+        data, "week", "weeks", "total_weeks"
+    )
+
+    assert result == {
+        "weeks": {
+            1: {"total": 300, "count": 2, "avg": 150},
+            2: {"total": 300, "count": 1, "avg": 300}
+        },
+        "total_weeks": 2
+    }
+
+
+def test_summarize_orders():
+    """Order summary includes paid and refunded orders."""
+    orders = [
+        {"amount": 1000, "status": "paid"},
+        {"amount": 500, "status": "paid"},
+        {"amount": 200, "status": "refunded"},
+        {"amount": 300, "status": "pending"}
+    ]
+
+    result = analytics._summarize_orders(orders)
+
+    assert result == {
+        "total_revenue": 1500,
+        "total_orders": 2,
+        "total_tax": 300,
+        "refunded": 200
+    }
+
+
+def test_segment_users():
+    """Users are grouped by role."""
+    users = [
+        {"role": analytics.UserRole.PREMIUM},
+        {"role": analytics.UserRole.REGULAR},
+        {"role": analytics.UserRole.PREMIUM},
+        {"role": 1}
+    ]
+
+    result = analytics._segment_users(users)
+
+    assert result == {
+        "premium": 2,
+        "regular": 1,
+        "other": 1,
+        "total": 4
+    }
